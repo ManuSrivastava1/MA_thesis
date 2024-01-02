@@ -11,3 +11,8 @@ Please make sure your environment includes:
 python (tested on 3.10)
 pytorch (tested on 2.0.1)
 ```
+Then, run the command:
+```
+pip install -r requirements.txt
+```
+<hr>
