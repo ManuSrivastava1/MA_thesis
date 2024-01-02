@@ -186,15 +186,15 @@ class Classifier(baseClf):
         adj_label          = torch.FloatTensor(adj_1st)
         sm_fea_s           = torch.FloatTensor(sm_fea_s)
         adj_label          = adj_label.reshape([-1,])
-        inx                = sm_fea_s.clone().detach().requires_grad_(True)#.cuda()
-        adj_label          = adj_label#.cuda()
+        inx                = sm_fea_s.clone().detach().requires_grad_(True) if torch.cuda.is_available() else sm_fea_s.clone().detach().requires_grad_(True)
+        adj_label          = adj_label.cuda() if torch.cuda.is_available() else adj_label
         pos_num            = len(adj.indices)
         neg_num            = n_nodes*n_nodes-pos_num
         up_eta             = (args_upth_ed - args_upth_st) / (args_epochs/args_upd)
         low_eta            = (args_lowth_ed - args_lowth_st) / (args_epochs/args_upd)
         pos_inds, neg_inds = update_similarity(normalize(sm_fea_s.numpy()), args_upth_st, args_lowth_st, pos_num, neg_num)
         upth, lowth        = update_threshold(args_upth_st, args_lowth_st, up_eta, low_eta)
-        pos_inds_cuda      = torch.LongTensor(pos_inds)#.cuda()
+        pos_inds_cuda      = torch.LongTensor(pos_inds).cuda() if torch.cuda.is_available() else torch.LongTensor(pos_inds)
 
         # ==========================================================================================
         
@@ -220,8 +220,8 @@ class Classifier(baseClf):
                 
                 self.optimiser.zero_grad()
                 # we select some negatively related and positively related nodeIDs and make our sample with them
-                sampled_neg  = torch.LongTensor(np.random.choice(neg_inds, size=AGE_bs))#.cuda()
-                sampled_pos  = torch.LongTensor(np.random.choice(pos_inds_cuda.cpu(), size=AGE_bs))#.cuda()
+                sampled_neg  = torch.LongTensor(np.random.choice(neg_inds, size=AGE_bs)).cuda() if torch.cuda.is_available() else torch.LongTensor(np.random.choice(neg_inds, size=AGE_bs))
+                sampled_pos  = torch.LongTensor(np.random.choice(pos_inds_cuda.cpu(), size=AGE_bs)).cuda() if torch.cuda.is_available() else torch.LongTensor(np.random.choice(pos_inds_cuda.cpu(), size=AGE_bs))
                 sampled_inds = torch.cat((sampled_pos, sampled_neg), 0)
                 
                 x_ind        = sampled_inds // n_nodes
@@ -231,7 +231,7 @@ class Classifier(baseClf):
                 z_x          = self.model.gnn(x)                 # this give problem if we change the dims of gnn
                 z_y          = self.model.gnn(y)
                 
-                batch_label  = torch.cat((torch.ones(AGE_bs), torch.zeros(AGE_bs)))#.cuda()
+                batch_label  = torch.cat((torch.ones(AGE_bs), torch.zeros(AGE_bs))).cuda() if torch.cuda.is_available() else torch.cat((torch.ones(AGE_bs), torch.zeros(AGE_bs)))
                 batch_pred   = self.model.gnn.dcs(z_x, z_y)
                 
                 loss_e       = torch.nn.functional.binary_cross_entropy_with_logits(batch_pred, batch_label)
@@ -263,7 +263,7 @@ class Classifier(baseClf):
             hidden_emb         = E.cpu().data.numpy()
             upth, lowth        = update_threshold(upth, lowth, up_eta, low_eta)
             pos_inds, neg_inds = update_similarity(hidden_emb, upth, lowth, pos_num, neg_num)
-            pos_inds_cuda      = torch.LongTensor(pos_inds)#.cuda()
+            pos_inds_cuda      = torch.LongTensor(pos_inds).cuda() if torch.cuda.is_available() else torch.LongTensor(pos_inds)
             
             # calculate average loss over an epoch
             train_loss   = train_loss/len(trainloader.sampler)
