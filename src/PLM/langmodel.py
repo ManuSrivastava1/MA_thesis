@@ -154,7 +154,28 @@ class PLM:
             # shape of hiddenStates - [1,512,hiddenSize]
             word_embedings = self.WordEmbd(hiddenStates,inp_Dataloader,sentences)
         return word_embedings,[[]],[[]],[[]]
-    
+
+    def make_defintionEmbeddings(self,F_defin):
+        sentence = F_defin
+        '''
+        Now we tokenise the sentence and get the modelOutput
+        '''
+        tokens   = self.tokeniser(sentence, return_tensors="pt")
+        with torch.no_grad():
+            outputs = self.model(**tokens)
+
+        '''
+        Now we a simple mean pooling to get the sentence embedding tensor.
+        '''
+        def_embedding = outputs.last_hidden_state.mean(dim=1).numpy()
+
+        '''
+        Now we convert the embeddings from a tensor to ndarray
+        and squeeze the embeddings so that it can be added to the graph.
+        '''
+        def_embedding = np.squeeze(def_embedding)
+        return def_embedding
+      
 class myPLM:
     def __init__(self,src,mode):
         if mode == 'create':
@@ -178,8 +199,18 @@ class myPLM:
         # w_embs is a list of list which contains only 1 list which is of the word embeddings 
         return w_embs[0],s_embs[0],ael[0],attns[0]
 
-    def get(sefl,word,indx,sent):
-        pass
+    def get(self,word,indx,sent):
+        if (word != 'root'):
+            sent = [s.lower() for s in sent]
+            # now we join the phrase with ' ' to make a more natural sentence
+            sent = '_'.join(sent)
+		    # we get simple word embeddings [w][vdim]
+			# the plm dict returns sentences and word_embeddings for each word in sentence
+            (_,w_embs) = self.plm[sent]
+            return w_embs[indx].numpy()
+        else:
+		    # incase the word is not the root, it just returns an array of 0s dimension of the plm features
+            return np.zeros((self.vdim),dtype=np.float32)
             
 '''
 m = PLM('google/electra-base-discriminator')

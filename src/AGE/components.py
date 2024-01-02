@@ -95,7 +95,7 @@ def load_data(path, dataset,ename):
 		fix Pickle incompatibility of numpy arrays between Python 2 and 3
 		https://stackoverflow.com/questions/11305790/pickle-incompatibility-of-numpy-arrays-between-python-2-and-3
 		'''
-		with open("{}/ind.{}_{}.{}".format(path,ename,dataset, names[i]), 'rb') as rf:
+		with open("{}/ind.{}{}.{}".format(path,ename,dataset, names[i]), 'rb') as rf:
 			u = pkl._Unpickler(rf)
 			u.encoding = 'latin1'
 			cur_data = u.load()
