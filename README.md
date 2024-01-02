@@ -15,4 +15,4 @@ Then, run the command:
 ```
 pip install -r requirements.txt
 ```
-<hr>
+--
