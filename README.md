@@ -15,4 +15,12 @@ Then, run the command:
 ```
 pip install -r requirements.txt
 ```
---
+---
+
+## vecotrisation
+
+---
+
+## Run
+
+Run the parser using CL:
