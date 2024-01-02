@@ -54,6 +54,7 @@ class metricLogger(object):
         plt.xlabel('Epoch')
         plt.ylabel('Loss')
         plt.legend()
+        plt.grid(True)
 
         # Accuracy Plot
         plt.subplot(1, 2, 2)
@@ -82,6 +83,7 @@ class metricLogger(object):
         plt.xlabel('Epoch')
         plt.ylabel('Metrics Value')
         plt.legend()
+        plt.grid(True)
 
         # Save or Show
         if self.plotPath:
