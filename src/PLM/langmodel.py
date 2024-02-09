@@ -157,24 +157,47 @@ class PLM:
 
     def make_defintionEmbeddings(self,F_defin):
         sentence = F_defin
-        '''
-        Now we tokenise the sentence and get the modelOutput
-        '''
-        tokens   = self.tokeniser(sentence, return_tensors="pt")
-        with torch.no_grad():
-            outputs = self.model(**tokens)
+        def mean_pooling(model_output, attention_mask):
+            token_embeddings = model_output[0] #First element of model_output contains all token embeddings
+            input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+            return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        
+        if ('gte' in self.plm_path):
+            tokens = self.tokeniser(sentence,return_attention_mask=True, return_tensors="pt")
+            with torch.no_grad():
+                outputs = self.model(**tokens)
+                last_hidden = outputs.last_hidden_state
+                embeddings  = last_hidden.mean(dim=1)
+                def_embedding  = F.normalize(embeddings, p=2, dim=1)
+                def_embedding = np.squeeze(def_embedding)
+                return def_embedding
+        elif ('miniLM' in self.plm_path):
+            encoded_input = self.tokeniser(sentence, padding=True, truncation=True, return_tensors='pt')
+            with torch.no_grad():
+                model_output = self.model(**encoded_input)
+            sentence_embedding = mean_pooling(model_output, encoded_input['attention_mask'])
+            sentence_embedding = F.normalize(sentence_embedding, p=2, dim=1)
+            return sentence_embedding
+        else:
 
-        '''
-        Now we a simple mean pooling to get the sentence embedding tensor.
-        '''
-        def_embedding = outputs.last_hidden_state.mean(dim=1).numpy()
+            '''
+            Now we tokenise the sentence and get the modelOutput
+            '''
+            tokens   = self.tokeniser(sentence, return_tensors="pt")
+            with torch.no_grad():
+                outputs = self.model(**tokens)
 
-        '''
-        Now we convert the embeddings from a tensor to ndarray
-        and squeeze the embeddings so that it can be added to the graph.
-        '''
-        def_embedding = np.squeeze(def_embedding)
-        return def_embedding
+            '''
+            Now we a simple mean pooling to get the sentence embedding tensor.
+            '''
+            def_embedding = outputs.last_hidden_state.mean(dim=1).numpy()
+
+            '''
+            Now we convert the embeddings from a tensor to ndarray
+            and squeeze the embeddings so that it can be added to the graph.
+            '''
+            def_embedding = np.squeeze(def_embedding)
+            return def_embedding
       
 class myPLM:
     def __init__(self,src,mode):
