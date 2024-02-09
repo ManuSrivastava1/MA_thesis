@@ -6,6 +6,7 @@ from sklearn.preprocessing import normalize
 
 from AGE import *
 from UTILS import metricLogger
+import wandb
 
 def countParams(model):
 	tp  = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -39,7 +40,17 @@ class baseClf:
         self.num_components = num_components
         self.max_sampled = max_sampled
         self.num_epochs = num_epochs
-        
+
+wandb.init(
+    project="test-project",
+    config={
+         "learning_rate" : 0.002,
+         "batch_size": 32,
+         "architecture":"AGE+GTE",
+         "sent_emb":"gte_l",
+    }
+)
+
 class Net(torch.nn.Module):
     def __init__(self,inpShape,frmCount,embSize,emb2fr,FEcount,device):
         super(Net,self).__init__()
@@ -53,6 +64,8 @@ class Net(torch.nn.Module):
         self.endX       = torch.tensor(emb2fr).to(device)
         self.prj_T      = torch.nn.Linear(self.inpShape[-1],self.hidden)
         self.prj_L      = torch.nn.Linear(embSize,self.hidden)
+        # Add a dropout layer
+        self.dropout    = torch.nn.Dropout(p=0.2)
         self.fc3        = torch.nn.Linear(self.hidden,FEcount)
         
         self.outW       = Parameter(torch.Tensor(self.outF,self.hidden))
@@ -69,10 +82,12 @@ class Net(torch.nn.Module):
         
         h               = torch.tanh(self.prj_T(target))
         E               = torch.tanh(self.prj_L(AGE_e[self.endX]))
+        E               = self.dropout(E)
         
         hp              = h.unsqueeze(1).repeat(1,E.shape[0],1)
         Ep              = E.unsqueeze(0).repeat(h.shape[0],1,1)
         joint_prj       = torch.mul(hp, Ep)
+
         output          = torch.mul(joint_prj, self.outW.unsqueeze(0).repeat(h.shape[0],1,1))
         output_frame    = torch.sum(output, dim=-1)
         output_frame    = torch.add(output_frame, self.outb.unsqueeze(0).repeat(h.shape[0],1))
@@ -151,7 +166,7 @@ class Classifier(baseClf):
         args_lowth_ed  = 0.5
         args_upd       = 1
         AGE_bs         = 256
-        batch_size     = 16
+        batch_size     = 32
         
         # Making the path for loading the data for AGE
         using          = self.dataset+'U'
@@ -159,7 +174,7 @@ class Classifier(baseClf):
         print(f"GNN Module using -> {using}\nusing the path -> {dataset}")
         
         # Loading the data using the AGE loader
-        ename = ""
+        ename = "_electra_b"
         adj, features, _, idx_train, idx_val, idx_test = load_data(dataset,using,ename)
         n_nodes, feat_dim                              = features.shape
         
@@ -186,8 +201,7 @@ class Classifier(baseClf):
         adj_label          = torch.FloatTensor(adj_1st)
         sm_fea_s           = torch.FloatTensor(sm_fea_s)
         adj_label          = adj_label.reshape([-1,])
-        inx                = sm_fea_s.clone().detach().requires_grad_(True) if torch.cuda.is_available() else sm_fea_s.clone().detach().requires_grad_(True)
-        adj_label          = adj_label.cuda() if torch.cuda.is_available() else adj_label
+        adj_label          = adj_label#.cuda()
         pos_num            = len(adj.indices)
         neg_num            = n_nodes*n_nodes-pos_num
         up_eta             = (args_upth_ed - args_upth_st) / (args_epochs/args_upd)
@@ -195,6 +209,7 @@ class Classifier(baseClf):
         pos_inds, neg_inds = update_similarity(normalize(sm_fea_s.numpy()), args_upth_st, args_lowth_st, pos_num, neg_num)
         upth, lowth        = update_threshold(args_upth_st, args_lowth_st, up_eta, low_eta)
         pos_inds_cuda      = torch.LongTensor(pos_inds).cuda() if torch.cuda.is_available() else torch.LongTensor(pos_inds)
+        pos_inds_cuda      = torch.LongTensor(pos_inds)#.cuda()
 
         # ==========================================================================================
         
@@ -210,8 +225,8 @@ class Classifier(baseClf):
         train_loss  = 1.0
         
         # setting stopage condition
-        #while ((pat < 10) or (train_loss_c > 0.2)):
-        while epoch < 3:
+        while ((pat < 10) or (train_loss_c > 0.2)):
+        #while epoch < 3:
             
             train_loss = train_loss_c = train_loss_e = train_loss_f = 0.0
             self.model.train()
@@ -220,8 +235,8 @@ class Classifier(baseClf):
                 
                 self.optimiser.zero_grad()
                 # we select some negatively related and positively related nodeIDs and make our sample with them
-                sampled_neg  = torch.LongTensor(np.random.choice(neg_inds, size=AGE_bs)).cuda() if torch.cuda.is_available() else torch.LongTensor(np.random.choice(neg_inds, size=AGE_bs))
                 sampled_pos  = torch.LongTensor(np.random.choice(pos_inds_cuda.cpu(), size=AGE_bs)).cuda() if torch.cuda.is_available() else torch.LongTensor(np.random.choice(pos_inds_cuda.cpu(), size=AGE_bs))
+                sampled_neg  = torch.LongTensor(np.random.choice(neg_inds, size=AGE_bs))#.cuda()
                 sampled_inds = torch.cat((sampled_pos, sampled_neg), 0)
                 
                 x_ind        = sampled_inds // n_nodes
@@ -232,6 +247,7 @@ class Classifier(baseClf):
                 z_y          = self.model.gnn(y)
                 
                 batch_label  = torch.cat((torch.ones(AGE_bs), torch.zeros(AGE_bs))).cuda() if torch.cuda.is_available() else torch.cat((torch.ones(AGE_bs), torch.zeros(AGE_bs)))
+                batch_label  = torch.cat((torch.ones(AGE_bs), torch.zeros(AGE_bs)))#.cuda()
                 batch_pred   = self.model.gnn.dcs(z_x, z_y)
                 
                 loss_e       = torch.nn.functional.binary_cross_entropy_with_logits(batch_pred, batch_label)
@@ -264,20 +280,25 @@ class Classifier(baseClf):
             upth, lowth        = update_threshold(upth, lowth, up_eta, low_eta)
             pos_inds, neg_inds = update_similarity(hidden_emb, upth, lowth, pos_num, neg_num)
             pos_inds_cuda      = torch.LongTensor(pos_inds).cuda() if torch.cuda.is_available() else torch.LongTensor(pos_inds)
+            pos_inds_cuda      = torch.LongTensor(pos_inds)#.cuda()
             
             # calculate average loss over an epoch
             train_loss   = train_loss/len(trainloader.sampler)
             train_loss_c = train_loss_c/len(trainloader.sampler)
             train_loss_e = train_loss_e/len(trainloader.sampler)  # is the loss of the gnn(AGE) i think
             train_loss_f = train_loss_f/len(trainloader.sampler)
+            
             self.logger.log_losses(train_loss,train_loss_c,train_loss_f,train_loss_e)
             # EVAL GNN
             val_auc, val_ap = get_roc_score(hidden_emb, adj_orig, val_edges, val_edges_false)
+            wandb.log({"Area_under_curve":val_auc,"Average_precision":val_ap,
+                       "train_loss_combined": train_loss, "FI_loss": train_loss_c,"FE_loss":train_loss_f,"NE_loss":train_loss_e})
             self.logger.log_auc_ap(val_auc,val_ap)
             # EVAL FRM_CLF on dev and test splits
             TRacc = self.evaluate(t_tr, y_tr, lp_tr, inx)
             Vacc  = self.evaluate(t_dv, y_dv, lp_dv, inx)
             Tacc  = self.evaluate(t_ts, y_ts, lp_ts, inx)
+            wandb.log({"accuracy_train": TRacc, "accuracy_validation": Vacc,"accuracy_test":Tacc})
             self.logger.log_accuracy(TRacc,Vacc,Tacc)
             avgV.pop(0)
             avgV.append(Vacc)
